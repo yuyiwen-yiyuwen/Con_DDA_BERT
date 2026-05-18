@@ -1,0 +1,299 @@
+================================================================================
+  MSGPT (transformer_compare) — Peptide Encoder 详细设计文档
+================================================================================
+
+目录: /home/yiwen/AIPC/scripts/organized_attantion/model/transformer_compare/
+涉及文件: model.py, decoder.py, layers.py
+
+================================================================================
+一、架构总览
+================================================================================
+
+MSGPT 模型包含两个与肽段相关的编码器：
+
+  1. PurePeptideEncoder  — 纯肽段编码器（自注意力），用于对比学习
+  2. PeptideDecoder       — 谱图条件肽段解码器（交叉注意力），用于 DDA / MLM
+
+两者共享相同的基础组件：PositionalEncoder, MassEncoder, charge_encoder, aa_encoder, NumEmbeddings
+
+================================================================================
+二、PurePeptideEncoder（纯肽段编码器）    [decoder.py:192-291]
+================================================================================
+
+设计目的：
+  为对比学习提供"纯净"的肽段表示向量，不受谱图特征干扰。
+  参考 DeepSearch 的单模态编码思路，肽段只看自身序列和前体信息。
+
+输入序列结构：[CLS] + [Precursor] + [Peptide Tokens]
+                ↑        ↑              ↑
+              1位     1位(融合)      50位(max_length)
+
+组件详解：
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2.1 CLS Token (nn.Parameter)                                    │
+│     形状: (1, 1, 768)                                           │
+│     作用: 可学习的全局汇总向量，位于序列首位                      │
+│           经过 Transformer 后，其输出作为整条肽段的表征           │
+│           供 contrastive_head 做对比学习                         │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2.2 Precursor Token (前体信息融合)                               │
+│     由三个子编码器的输出相加而成:                                 │
+│                                                                  │
+│     a) MassEncoder (质量编码)                                    │
+│        输入: precursors[:, None, [0]] — 前体质量 (B,1,1)         │
+│        方法: 正弦/余弦多尺度编码（类似位置编码但用于连续数值）     │
+│              将标量质量映射为 (B,1,768) 高维向量                  │
+│        公式: sin(mass / sin_term), cos(mass / cos_term)          │
+│              其中 sin_term = base * scale^(i/(n-1))              │
+│              base = min_wavelength/(2π), scale = max/min         │
+│                                                                  │
+│     b) Charge Embedding (电荷嵌入)                                │
+│        输入: precursors[:,1].int() - 1 — 电荷数 (B,)             │
+│        方法: nn.Embedding(max_charge=10, 768)                    │
+│              将电荷数查表映射为 (B,1,768)                         │
+│                                                                  │
+│     c) NumEmbeddings (RT/deltaRT 数值嵌入)                       │
+│        输入: precursors[:, 2:] — [RT, deltaRT] (B,2)             │
+│        架构: shared_linear(2→768) → BatchNorm1d → ReLU           │
+│              将连续两维 RT 特征映射为 (B,1,768)                   │
+│                                                                  │
+│     前体 token = masses + charges[:,None,:] + rt[:,None,:]       │
+│     三个 768 维向量逐元素相加，作为一个融合的前体表征              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2.3 Peptide Token Embedding (氨基酸序列嵌入)                     │
+│     aa_encoder: nn.Embedding(vocab_size, 768, padding_idx=0)     │
+│     输入: tokens (B, 50) — 每个位置是氨基酸的 token ID            │
+│     输出: (B, 50, 768) — 每个氨基酸一个 768 维向量               │
+│     词表: <pad>(0), <mask>(1), A,C,D,E,F,G,H,I,K,L,M,N,O,P,Q,R, │
+│           S,T,U,V,W,Y, C[57.02], M[15.99], N[.98], Q[.98],      │
+│           X(n[42]), <unk>                                        │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2.4 PositionalEncoder (位置编码)                                 │
+│     方法: 正弦/余弦位置编码（与 Transformer 原始论文一致）         │
+│     输入: peptide_input (B, 52, 768)  [CLS+Precursor+50 tokens]  │
+│     输出: (B, 52, 768) — 编码与输入相加                          │
+│     公式: sin(pos / scale^(2i/d)), cos(pos / scale^(2i/d))       │
+│     作用: 为 Transformer 提供序列顺序信息                         │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2.5 Padding Mask 构造                                           │
+│     prefix_mask: CLS(0) 和 Precursor(0) — 永不遮蔽               │
+│     token_padding_mask: tokens == 0 (padding位置为True)           │
+│     key_padding_mask = [0,0] + token_padding_mask                │
+│     总长度: 52 = 1(CLS) + 1(Precursor) + 50(tokens)              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2.6 Transformer Encoder (自注意力)                               │
+│     nn.TransformerEncoder(layer, num_layers=9)                   │
+│     n_head=16, dim_model=768, dim_feedforward=1024               │
+│     仅做自注意力（无交叉注意力），不接收谱图 memory               │
+│     输入: (B, 52, 768), 输出: (B, 52, 768)                       │
+│     取第 0 位 CLS 输出 -> contrastive_head                       │
+└─────────────────────────────────────────────────────────────────┘
+
+前向传播流程:
+  precursors[Mass,Charge,RT,dRT]  +  tokens[50个AA索引]
+         │                              │
+    ┌────┴────┬─────────┐          aa_encoder (Embedding)
+  MassEncoder  Charge   NumEmb         │
+    │          Embed    (RT)           │
+    └────┬──────┴────┬────┘           │
+         └─────┬─────┘                │
+          precursor_token (1,768)     token_embeddings (50,768)
+               │                      │
+         cls_token(1,768)             │
+               │                      │
+         [CLS] + [Precursor] + [Tokens]
+               │
+         PositionalEncoder
+               │
+         TransformerEncoder (9 layers, self-attention only)
+               │
+         encoder_output[:, 0, :]  →  CLS vector (B, 768)
+               │
+         contrastive_head  →  L2-normalized (B, 128)  →  pep_latent
+
+================================================================================
+三、PeptideDecoder（谱图条件肽段解码器）  [decoder.py:293-413]
+================================================================================
+
+设计目的：
+  利用谱图信息（作为 cross-attention 的 memory）指导肽段序列的深度理解，
+  用于 DDA 二分类和 MLM（Masked Language Model）任务。
+
+输入序列结构：[Precursor] + [Peptide Tokens]    （没有 CLS token）
+                ↑              ↑
+              1位            50位
+
+关键区别 vs PurePeptideEncoder:
+  - 使用 TransformerDecoder（而非 Encoder），接收谱图特征作为 memory
+  - 序列中不包含 CLS token（全局表征由谱图-肽段交叉注意力融合产生）
+  - memory 来自谱图经过 peak_encoder + TransformerEncoder 后的输出
+
+组件详解：
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 3.1 输入构造 (与 PurePeptideEncoder 共享前体编码逻辑)            │
+│     masses  = MassEncoder(precursors[:,None,[0]])               │
+│     charges = charge_encoder(precursors[:,1].int()-1)           │
+│     rt      = num_embeddings(precursors[:,2:])                  │
+│     precursors_token = masses + charges[:,None,:] + rt[:,None,:]│
+│     tokens  = aa_encoder(tokens.int())                          │
+│     tgt = cat([precursors_token, tokens], dim=1)  → (B,51,768) │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 3.2 Transformer Decoder (交叉注意力)                             │
+│     nn.TransformerDecoder(layer, num_layers=9)                   │
+│     tgt (查询): 肽段序列 (B, 51, 768)                            │
+│     memory (键/值): 谱图编码输出 (B, n_peaks+1, 768)            │
+│     tgt_mask: generate_no_mask(51) — 全零，允许看到所有位置       │
+│               (因为是双向理解肽段，不是自回归生成)                │
+│     tgt_key_padding_mask: tgt.sum(dim=2)==0 — token全零则遮蔽    │
+│     memory_key_padding_mask: spectra_mask — 遮蔽谱图padding峰    │
+│                                                                  │
+│     交叉注意力: Q(肽段) @ K(谱图) → 每个肽段位置关注相关谱峰     │
+│     自注意力:   肽段序列内部交互                                  │
+└─────────────────────────────────────────────────────────────────┘
+
+前向传播流程:
+  spectra (B, n_peaks, 2)                   precursors + tokens
+        │                                         │
+  MultiScalePeakEmbedding                    [同 PurePeptideEncoder
+        │                                    的前体/肽段编码逻辑]
+  TransformerEncoder (self-attention)              │
+        │                                    tgt (B, 51, 768)
+  memory (B, n_peaks+1, 768)                      │
+        │                                         │
+        └──────→ TransformerDecoder ←─────────────┘
+                  (cross-attention:
+                   Q=peptide, K/V=spectra)
+                        │
+              decoder_output (B, 51, 768)
+                        │
+        ┌───────────────┴───────────────┐
+        │                               │
+  DDA Head:                      MLM Head:
+  seq_pool (聚合序列) →           mask_lm (Linear 768→vocab)
+  Linear(768→64)→ReLU→           transposed: (B,vocab,50)
+  Linear(64→1)→sigmoid
+        │
+  dda_pred (B,)
+
+================================================================================
+四、共享基础组件
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 4.1 MassEncoder (质量编码器)                 [decoder.py:73-130] │
+│     将标量质量值通过多尺度正弦/余弦波映射为高维向量              │
+│     设计原理: 不同频率捕捉不同精度——高频捕捉微小质量差，         │
+│               低频捕捉大范围分布                                   │
+│     dim_model=768, n_sin=384, n_cos=384                          │
+│     sin_term[i] = base * scale^(i/383), i=0..383                 │
+│     cos_term[i] = base * scale^(i/383), i=0..383                 │
+│     输出: sin(m/z / sin_term) ⊕ cos(m/z / cos_term)              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 4.2 PositionalEncoder (位置编码器)          [decoder.py:132-189] │
+│     标准正弦/余弦位置编码                                         │
+│     与 MassEncoder 的区别: 输入是离散位置索引而非连续质量值       │
+│     两者公式形式相同，但 MassEncoder 多了 base 参数 (min_λ)       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 4.3 NumEmbeddings (数值特征嵌入)              [decoder.py:11-68] │
+│     通用数值特征编码模块，用于 RT/deltaRT 等连续特征              │
+│     架构: shared_linear(2→768) → BatchNorm1d → ReLU              │
+│     支持多种架构组合: [linear, shared_linear, relu, layernorm,   │
+│                       batchnorm]                                  │
+│     也可处理 per-peak 的多维特征（此时使用 NLinearMemoryEfficient）│
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 4.4 MultiScalePeakEmbedding (谱峰编码器)       [layers.py:39-105]│
+│     用于编码质谱峰 (m/z + intensity)                              │
+│     步骤:                                                         │
+│       1. m/z → 多尺度 sin/cos 波形 (freqs: 10^-2 ~ 10^-3)        │
+│       2. mlp: Linear→ReLU→Dropout→Linear→Dropout                 │
+│       3. cat([mz_features, intensities]) — 拼接强度               │
+│       4. head: Linear→ReLU→Dropout→Linear→Dropout → (B,P,768)    │
+└─────────────────────────────────────────────────────────────────┘
+
+================================================================================
+五、两编码器的协同工作流程 (model.py MSGPT.forward)
+================================================================================
+
+  spectra ──→ peak_encoder ──→ TransformerEncoder ──→ encoded_spectra
+                                                          │
+                    ┌─────────────────────────────────────┤
+                    │ (作为 memory)                       │ (取[:,0,:])
+                    ↓                                     ↓
+  tokens ──→ PeptideDecoder ──→ decoder_output          contrastive_head
+  precursors  (cross-attn)         │                   spectra_latent (B,128)
+                    │              │
+                    │    ┌─────────┴──────────┐
+                    │    │                    │
+                    │  DDA Head           MLM Head
+                    │  dda_pred (B)       mask_pred
+                    │
+  tokens ──→ PurePeptideEncoder ──→ cls_output
+  precursors  (self-attn only)        │
+                              contrastive_head
+                              pep_latent (B,128)
+
+  contrastive_loss = CoCa-style in-batch contrastive
+                     (spectra_latent @ pep_latent^T)
+
+================================================================================
+六、关键设计思想总结
+================================================================================
+
+  1. 双编码器解耦策略
+     - PurePeptideEncoder: 纯肽段自注意力 → 保真肽段表征 → 对比学习
+     - PeptideDecoder:     谱图-肽段交叉注意力 → 深度融合 → DDA/MLM
+     避免对比学习向量被谱图噪声污染，同时保证 DDA 任务有充分的跨模态交互
+
+  2. 前体信息三合一融合 (Mass + Charge + RT)
+     三种异构信息通过各自编码器映射到同一 768 维空间后直接相加
+     简单有效，避免了复杂的门控或注意力融合机制
+
+  3. 多尺度正弦/余弦编码
+     MassEncoder 和 MultiScalePeakEmbedding 都采用多尺度 sin/cos 编码
+     连续数值 → 高维空间，使 Transformer 能学习精细的质量差异
+
+  4. CLS Token 策略
+     PurePeptideEncoder 使用 CLS token 汇总全局信息
+     PeptideDecoder 不使用 CLS，由 seq_pool 可学习聚合替代
+
+  5. CoCa 风格对比学习
+     双向 in-batch contrastive loss:
+       L = (CE(spectra→pep) + CE(pep→spectra)) / 2
+     支持 decoy 增强: 将 decoy 肽段加入负样本池增加难度
+
+================================================================================
+七、关键参数一览
+================================================================================
+
+  dim_model:        768      (隐藏层维度)
+  n_head:           16       (注意力头数)
+  dim_feedforward:  1024     (FFN 维度)
+  n_layers:         9        (Transformer 层数)
+  max_length:       50       (肽段最大长度)
+  vocab_size:       29       (词表大小: pad/mask + 20AA + 5修饰 + X + unk)
+  max_charge:       10       (最大电荷数)
+  contrastive_dim:  128      (对比学习投影维度)
+  n_peaks:          150      (谱峰数量)
+  dropout:          0.0      (训练时 dropout)
+
+================================================================================
