@@ -1,3 +1,16 @@
+"""
+功能：MSGPT对比学习+在线质量锚定重排训练（Contrastive+DDA+MLM）
+输入：
+    --config /home/yiwen/AIPC/scripts/organized_attantion/config/model.yaml
+    --train_data_dir .../pkl_dataset/train
+    --model_save_path .../checkpoints
+    --online_mass_anchor_train --online_input_dir 同上
+输出：
+    {model_save_path}/msgpt_epoch_N.pt
+    {model_save_path}/batch_pred_top10.log
+    {model_save_path}/debug_metrics.csv
+"""
+
 import argparse
 import glob
 import math

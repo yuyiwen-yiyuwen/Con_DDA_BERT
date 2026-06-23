@@ -1,3 +1,13 @@
+"""
+功能：timsTOF数据全流程：gen parquet→split train/val→convert pkl.gz（支持--start_from断点续跑）
+输入：
+    --tims_root /home/yiwen/AIPC/database/tims
+    --work_dir /home/yiwen/AIPC/scripts/attantion
+输出：
+    data/dataset/tims_all/train/{base}_train.pkl.gz
+    data/dataset/tims_all/val/{base}_val.pkl.gz
+"""
+
 import argparse
 import concurrent.futures
 import gc

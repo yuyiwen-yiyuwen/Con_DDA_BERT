@@ -1,3 +1,13 @@
+"""
+功能：验证原始MSGPT（无对比学习头）checkpoint在parquet数据上，输出每文件TSV
+输入：
+    --val_parquet_dir /home/yiwen/AIPC/test_data/bas_test_dataset
+    --checkpoint_path checkpoint路径
+    --output_dir 输出目录
+输出：
+    {output_dir}/{basename}.tsv（scan_number/peptide/label/score）
+"""
+
 import argparse
 import glob
 import os

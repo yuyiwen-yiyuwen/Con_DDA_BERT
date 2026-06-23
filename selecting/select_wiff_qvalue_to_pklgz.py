@@ -1,6 +1,10 @@
 """
-按全局 q-value 从 train_wiff_all_psm_score_epoch10 筛选 wiff_all 数据，卡 1% FDR。
-所有 PSM 均作为训练集（不分割 val）。
+功能：全局q-value筛选wiff PSM→pkl.gz（全部train，不分割val）
+输入：
+    --score_dir .../data/score/train_wiff_all_psm_score_epoch10
+    --train_pkl_dir .../data/dataset/wiff_all/train
+输出：
+    data/dataset/wiff_all/train/train.XXXXX.pkl.gz
 """
 
 import argparse

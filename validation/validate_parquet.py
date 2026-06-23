@@ -1,3 +1,17 @@
+"""
+功能：验证单个MSGPT-compare checkpoint在parquet数据上，输出每文件TSV和汇总CSV
+输入：
+    --config /home/yiwen/AIPC/scripts/organized_attantion/config/model.yaml
+    --val_parquet_dir /home/yiwen/AIPC/test_data/bas_test_dataset
+    --checkpoint_path .../checkpoints_hard_decoy_adv/msgpt_epoch_1.pt
+    --device cpu --num_files 5 --seed 42 --batch_size 512
+    (也可用cuda，--num_files 0=全部)
+输出：
+    data/results/random5/{basename}.tsv（CPU随机5文件测试）
+    data/results/tims_only_test/epoch_N/（tims checkpoint评估）
+    每parquet对应的.tsv（scan_number/peptide/label/score）+ 汇总CSV（含1%FDR）
+"""
+
 import argparse
 import glob
 import os

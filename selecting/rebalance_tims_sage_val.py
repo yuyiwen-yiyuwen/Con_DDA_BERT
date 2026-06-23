@@ -1,4 +1,13 @@
-"""从 tims_sage_select/val 随机取 10 万留作验证集，其余并入训练集。"""
+"""
+功能：从tims_sage_select/val随机抽10万留作验证集，其余并入训练集
+输入（源码硬编码）：
+    data/tims_sage_select/val/*.pkl.gz
+    data/tims_sage_select/train/*.pkl.gz
+输出：
+    data/tims_sage_select/val/val.00000.pkl.gz（保留10万验证数据）
+    data/tims_sage_select/train/train.XXXXX.pkl.gz（原train+val剩余数据合并）
+"""
+
 import gzip
 import os
 import pickle

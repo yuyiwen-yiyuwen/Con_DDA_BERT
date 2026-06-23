@@ -1,18 +1,13 @@
 """
-wiff 数据全流程管线：gen_parquet → assign global PSM ID → split → convert → pkl.gz
-
-适配自 split_data_tims.py。与 tims 版本的区别：
-  - 源数据: /home/yiwen/AIPC/database/wiff
-  - 输出 pkl.gz: /home/yiwen/AIPC/scripts/organized_attantion/data/dataset/wiff_all
-  - 过程中确定性构建 PSM 索引（非后匹配），输出到 wiff_pkl_parquet_index/
-  - 中间文件一律写入 /tmp，完成后自动清理
-
-索引构建流程（嵌入管线）：
-  1.2 gen_parquet: 每个输出行带 orig_row_idx / orig_candidate_idx
-  1.25 assign IDs: 为全体 PSM parquet 分配全局递增 global_psm_id，建 id→来源 映射
-  1.3 split: global_psm_id 列随数据 shuffle 后进入 train/val parquet
-  1.35 extract index: 从 split parquet 读取 global_psm_id 列，联合映射写出索引
-  1.4/1.5 convert: split parquet 名与 pkl.gz 名一一对应，索引自动成立
+功能：wiff数据全流程：gen parquet→assign global PSM ID→split→convert pkl.gz
+输入：
+    --wiff_root /home/yiwen/AIPC/database/wiff
+    --work_dir /home/yiwen/AIPC/scripts/attantion
+    --index_dir .../data/dataset/wiff_pkl_parquet_index
+输出：
+    data/dataset/wiff_pkl_parquet_index/*_index.parquet（PSM索引）
+    data/dataset/wiff_all/train/{base}_{tag}.pkl.gz
+    data/dataset/wiff_all/val/{base}_{tag}.pkl.gz
 """
 
 import argparse

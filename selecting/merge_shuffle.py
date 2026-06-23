@@ -1,3 +1,13 @@
+"""
+功能：合并mzml/tims/wiff三个sage_select目录的pkl.gz，种子打乱后分chunk保存
+输入（源码硬编码）：
+    data/dataset/mzml_sage_select
+    data/dataset/tims_sage_select
+    data/dataset/wiff_sage_select
+输出：
+    merge_shuffle/train.XXXXX.pkl.gz（三源合并打乱后chunk文件）
+"""
+
 import os, pickle, gzip, gc
 import numpy as np
 from tqdm import tqdm

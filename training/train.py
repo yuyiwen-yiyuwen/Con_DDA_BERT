@@ -1,3 +1,14 @@
+"""
+功能：MSGPT基础训练，DDA+MLM联合训练，流式pkl读取，WarmupScheduler
+输入：
+    --config model.yaml
+    --train_data_dir .../pkl_dataset/train
+    --model_save_path .../checkpoints
+输出：
+    {model_save_path}/msgpt_epoch_N.pt
+    {model_save_path}/batch_pred_top10.log
+"""
+
 import argparse
 import glob
 import math

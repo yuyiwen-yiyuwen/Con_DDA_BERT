@@ -1,12 +1,13 @@
 """
-按 per-file q-value (sage_discriminant_score) 筛选 pkl.gz 数据。
-
-流程:
-1. 从原始 tims parquet 展平为 PSM 级别，获取 sage_discriminant_score
-2. 每个原始文件独立计算 per-file q-value
-3. 通过 (peptide, precursor_mass, charge, label) 将 sage score + q-value 对齐到 pkl.gz 的每一行
-4. 按 per-file q-value 筛选 target pool，选取 val/train target 和 decoy
-5. 从 pkl.gz 回捞选中行，写出分块 pkl.gz
+功能：per-file Sage q-value筛选timsTOF PSM，构造train/val pkl.gz（3阶段：sage lookup→对齐pkl→materialize）
+输入：
+    --tims_root /home/yiwen/AIPC/database/tims
+    --pkl_dir .../pkl_dataset_tims/tims_pkl_all
+    --train_output_dir .../data/tims_sage_select/train
+    --val_output_dir .../data/tims_sage_select/val
+输出：
+    data/dataset/tims_sage_select/train/train.XXXXX.pkl.gz
+    data/dataset/tims_sage_select/val/val.XXXXX.pkl.gz
 """
 
 import argparse

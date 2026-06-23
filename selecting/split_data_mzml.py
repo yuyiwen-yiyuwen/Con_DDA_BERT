@@ -1,3 +1,13 @@
+"""
+功能：mzML数据全流程：gen parquet→split train/val→convert pkl.gz
+输入：
+    --sample_root /home/yiwen/AIPC/database/mzml
+    --work_dir /home/yiwen/AIPC/scripts/attantion
+输出：
+    data/dataset/mzml/train/*.pkl.gz
+    data/dataset/mzml/val/*.pkl.gz
+"""
+
 import argparse
 import concurrent.futures
 import glob

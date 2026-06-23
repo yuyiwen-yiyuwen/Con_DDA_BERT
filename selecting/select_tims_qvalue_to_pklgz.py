@@ -1,11 +1,13 @@
 """
-按全局 q-value 从 train_tims_all_psm_score 中筛选数据，并构造 train/val 两套样本：
-1) 全量排序精确计算 q-value（非直方图近似），用 q-value 阈值筛选 target pool；
-2) 从 target pool 中可复现随机抽取 5 万作为 val target，其余→train；
-3) decoy 先按"一半高分 (model_score) + 一半随机"从全量 pool 筛出 selected decoy 池；
-4) 从 selected decoy 池中可复现随机抽取 5 万作为 val decoy，其余→train；
-5) 数据来源同时包含 train 和 val 的 score/pkl，统一筛选后重组成 train/val；
-6) 直接写出分块 pkl.gz，不做质量锚定重排（由训练脚本在线完成）。
+功能：全局q-value（全量排序精确计算）筛选timsTOF PSM，构造train/val pkl.gz
+输入：
+    --score_dir .../data/score/train_tims_all_psm_score_epoch10
+    --train_pkl_dir .../pkl_dataset_tims/tims_pkl_all/train
+    --train_output_dir .../data/dataset/tims_select/train
+    --val_output_dir .../data/tims_select/val
+输出：
+    data/dataset/tims_select/train/train.XXXXX.pkl.gz
+    data/tims_select/val/val.XXXXX.pkl.gz
 """
 
 import argparse

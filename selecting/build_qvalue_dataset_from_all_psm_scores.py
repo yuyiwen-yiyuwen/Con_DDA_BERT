@@ -1,3 +1,16 @@
+"""
+功能：收集所有PSM得分建立全局q-value查找表，按q阈值筛选PSM并输出pkl.gz
+输入：
+    --train_score_dir .../data/score/train_tims_all_psm_score_epoch10/train
+    --val_score_dir .../data/score/train_tims_all_psm_score_epoch10/val
+    --train_pkl_dir .../pkl_dataset_tims/tims_pkl_all/train
+    --output_dir 输出根目录
+输出：
+    {output_dir}/qvalue_index/{split}_qvalue_index.tsv
+    {output_dir}/dataset/{split}/{split}_q0.01.XXXXX.pkl.gz
+    {output_dir}/qvalue_dataset_summary.csv
+"""
+
 import argparse
 import gzip
 import glob

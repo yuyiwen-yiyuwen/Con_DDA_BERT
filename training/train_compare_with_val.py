@@ -1,3 +1,16 @@
+"""
+功能：带验证集对比学习训练，合并train+val pkl（排除val.00004_val.pkl）
+输入：
+    --train_data_dir .../pkl_dataset/train
+    --val_data_dir .../pkl_dataset/val
+    --online_input_dir 同train_data_dir
+    --model_save_path .../data/checkpoints/checkpoints_withoutRT_with_val
+输出：
+    data/checkpoints/checkpoints_withoutRT_with_val/msgpt_epoch_N.pt（N=1..10）
+    data/checkpoints/checkpoints_withoutRT_with_val/batch_pred_top10.log
+    data/checkpoints/checkpoints_withoutRT_with_val/debug_metrics.csv
+"""
+
 import argparse
 import glob
 import math

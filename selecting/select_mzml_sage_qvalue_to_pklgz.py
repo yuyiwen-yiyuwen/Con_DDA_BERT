@@ -1,3 +1,13 @@
+"""
+功能：Sage q-value筛选mzML PSM→parquet→train merge→pkl.gz（3阶段管线）
+输入：
+    --sample_root /home/yiwen/AIPC/database/mzml
+    --work_dir /home/yiwen/AIPC/scripts/organized_attantion
+    --pkl_out_dir /home/yiwen/AIPC/scripts/organized_attantion/data/dataset/mzml_sage_select
+输出：
+    data/dataset/mzml_sage_select/train/train.XXXXX.pkl.gz
+"""
+
 import argparse
 import concurrent.futures
 import glob
